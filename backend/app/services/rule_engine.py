@@ -105,25 +105,23 @@ def classify_school(name: str | None) -> str | None:
 
 
 def resolve_school_tier(fields: dict) -> dict:
-    """按双一流名单判定院校层次，并校验与 LLM 判断是否一致。
+    """按双一流名单判定院校层次，名单是最高权威。
 
     返回 {"tier": "double_first_class" | "other", "review_reason": str | None}
 
-    判定表（list = 名单结论，llm = 抽取结论）：
-    | list       | llm      | tier               | 复核 |
-    | 命中双一流 | 双一流   | double_first_class | 否   |
-    | 命中双一流 | 非双一流 | other              | 是（冲突） |
-    | 命中双一流 | 无结论   | double_first_class | 否   |
-    | 判独立学院 | 双一流   | other              | 是（冲突） |
-    | 判独立学院 | 非双一流 | other              | 否   |
-    | 判独立学院 | 无结论   | other              | 否   |
-    | 未命中     | 双一流   | other              | 是（冲突） |
-    | 未命中     | 非双一流 | other              | 否   |
-    | 未命中     | 无结论   | other              | 是（无法确认） |
+    优先级：名单 > LLM。名单一旦命中，直接用名单结论，忽略 LLM。
 
-    前置分支：如果没有任何真实校名（bachelor_school 和 graduate_school 都为空），
-    名单无输入可查 → 直接信任 LLM tier 判断，不做冲突校验；只有 tier 也没给时才复核。
-    刻意不做任意位置的包含匹配。
+    判定表：
+    | 名单结论       | LLM 结论 | tier               | 复核？ | 理由 |
+    |----------------|---------|--------------------|-------|------|
+    | 命中双一流      | 任意     | double_first_class | 否    | 名单权威 |
+    | 判独立学院      | 任意     | other              | 否    | 名单权威 |
+    | 未命中          | 双一流   | double_first_class | 否    | 名单遗漏可能性大，信任 LLM |
+    | 未命中          | 非双一流 | other              | 否    | 名单 + LLM 一致 |
+    | 未命中          | 无结论   | other              | 是    | 名单未命中且无 LLM 兜底 |
+    | 无真实校名      | 双一流   | double_first_class | 否    | 名单无输入，信任 LLM |
+    | 无真实校名      | 非双一流 | other              | 否    | 名单无输入，信任 LLM |
+    | 无真实校名      | 无结论   | other              | 是    | 两边都没有 |
 
     fields["school_tier"] 存在时视为人工复核结论，优先级最高。
     """
@@ -131,25 +129,7 @@ def resolve_school_tier(fields: dict) -> dict:
     if override in (TIER_DOUBLE, TIER_OTHER):
         return {"tier": override, "review_reason": None}
 
-    # —— 前置分支：无真实校名时，名单无输入可查 → 直接信任 LLM tier ——
-    has_real_school = any(
-        fields.get(f) and str(fields.get(f)).strip()
-        for f in _SCHOOL_FIELDS
-    )
-    if not has_real_school:
-        verdicts = [fields.get(f) for f in _TIER_FIELDS]
-        llm_hit = any(v == TIER_DOUBLE for v in verdicts)
-        llm_says_other = any(v == TIER_OTHER for v in verdicts)
-        if llm_hit:
-            return {"tier": TIER_DOUBLE, "review_reason": None}
-        if llm_says_other:
-            return {"tier": TIER_OTHER, "review_reason": None}
-        return {
-            "tier": TIER_OTHER,
-            "review_reason": "院校层次无法确认：无真实校名且抽取未给出层次判断",
-        }
-
-    # —— 有真实校名：走名单先判 + LLM 一致性校验 ——
+    # —— 有真实校名：名单是最高权威 ——
     list_verdicts = [classify_school(fields.get(f)) for f in _SCHOOL_FIELDS]
     list_hit = any(v == TIER_DOUBLE for v in list_verdicts)
     list_other = any(v == TIER_OTHER for v in list_verdicts)
@@ -158,34 +138,28 @@ def resolve_school_tier(fields: dict) -> dict:
     llm_hit = any(v == TIER_DOUBLE for v in verdicts)
     llm_says_other = any(v == TIER_OTHER for v in verdicts)
 
+    # 名单命中 → 直接用名单，忽略 LLM
     if list_hit:
-        if llm_says_other and not llm_hit:
-            return {
-                "tier": TIER_OTHER,
-                "review_reason": "院校层次判定冲突：名单命中双一流，但抽取结果为非双一流",
-            }
         return {"tier": TIER_DOUBLE, "review_reason": None}
-
     if list_other:
-        if llm_hit:
-            return {
-                "tier": TIER_OTHER,
-                "review_reason": "院校层次判定冲突：名单判定为独立学院，但抽取结果为双一流",
-            }
         return {"tier": TIER_OTHER, "review_reason": None}
 
+    # 名单未命中 → 看 LLM
     if llm_hit:
-        return {
-            "tier": TIER_OTHER,
-            "review_reason": "院校层次判定冲突：抽取结果为双一流，但名单未命中",
-        }
+        return {"tier": TIER_DOUBLE, "review_reason": None}
     if llm_says_other:
         return {"tier": TIER_OTHER, "review_reason": None}
 
-    return {
-        "tier": TIER_OTHER,
-        "review_reason": "院校层次无法确认：名单未命中且抽取未给出判断",
-    }
+    # 两边都没有 → 复核
+    has_real_school = any(
+        fields.get(f) and str(fields.get(f)).strip()
+        for f in _SCHOOL_FIELDS
+    )
+    if has_real_school:
+        reason = "院校层次无法确认：名单未命中且抽取未给出判断"
+    else:
+        reason = "院校层次无法确认：无真实校名且抽取未给出判断"
+    return {"tier": TIER_OTHER, "review_reason": reason}
 
 
 def precheck_hard(fields: dict) -> dict:

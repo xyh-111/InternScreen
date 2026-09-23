@@ -120,22 +120,24 @@ def test_list_hit_without_llm_verdict_is_double_first_class():
     assert verdict == {"tier": "double_first_class", "review_reason": None}
 
 
-def test_list_hit_but_llm_says_other_triggers_review():
+def test_list_hit_but_llm_says_other_no_review():
+    """名单命中双一流时忽略 LLM 的 other 判定（名单是最高权威）。"""
     verdict = resolve_school_tier(
         {"bachelor_school": "电子科技大学", "bachelor_school_tier": "other"}
     )
 
-    assert verdict["tier"] == "other"
-    assert "冲突" in verdict["review_reason"]
+    assert verdict["tier"] == "double_first_class"
+    assert verdict["review_reason"] is None
 
 
-def test_list_miss_but_llm_says_double_triggers_review():
+def test_list_miss_but_llm_says_double_no_review():
+    """名单未命中但 LLM 说双一流 → 信任 LLM，不复核（名单可能有遗漏）。"""
     verdict = resolve_school_tier(
         {"bachelor_school": "成都工业学院", "bachelor_school_tier": "double_first_class"}
     )
 
-    assert verdict["tier"] == "other"
-    assert "冲突" in verdict["review_reason"]
+    assert verdict["tier"] == "double_first_class"
+    assert verdict["review_reason"] is None
 
 
 def test_list_miss_and_llm_says_other_no_review():
@@ -239,8 +241,8 @@ def test_independent_college_no_review_when_llm_agrees():
     assert outcome["score"]["final_score"] == 80
 
 
-def test_independent_college_conflicts_with_llm_double():
-    """独立学院但抽取判双一流 → 冲突转复核。"""
+def test_independent_college_ignores_llm_double():
+    """独立学院后缀规则判 other 时忽略 LLM 的 double 判定（名单权威）。"""
     verdict = resolve_school_tier(
         {
             "bachelor_school": "四川大学锦江学院",
@@ -249,7 +251,7 @@ def test_independent_college_conflicts_with_llm_double():
     )
 
     assert verdict["tier"] == "other"
-    assert "独立学院" in verdict["review_reason"]
+    assert verdict["review_reason"] is None
 
 
 def test_offsite_campus_scores_20():

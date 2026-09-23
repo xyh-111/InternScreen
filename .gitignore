@@ -13,3 +13,6 @@ dist/
 # AI 记忆与草稿
 .trae/
 最小demo框架.md
+
+# 评估产物
+backend/eval_result.json
