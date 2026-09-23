@@ -1,0 +1,53 @@
+# 实习生筛选规则 v1.0（已冻结）
+# LangGraph 节点只负责编排，所有阈值与分数均从本文件读取。
+
+version: "1.0"
+
+# ===== 硬性条件：任一不满足直接淘汰，不进入评分 =====
+hard_filter:
+  allowed_degrees: [bachelor, master, phd]
+  min_internship_months: 3
+  min_days_per_week: 4
+  require_chengdu_onsite: true
+
+# ===== 评分权重 =====
+scoring:
+  degree:
+    phd: 30
+    master: 25
+    bachelor: 18
+  school_tier:
+    double_first_class: 20
+    other: 8
+    # 非双一流一律 8 分；unknown / null 同口径，避免 LLM 未给出院校层次时静默得 0 分
+    unknown: 8
+  ai_tool_experience:
+    project: 25
+    daily_chat: 12
+    none: 0
+  stability:
+    gte_6_months: 15
+    else: 10
+  days_per_week:
+    gte_5: 15
+    else: 12
+  # 加分：到岗稳定性与每周到岗天数均拿满分时额外加 5 分
+  bonus:
+    condition: stability_and_days_full
+    value: 5
+
+# ===== 评级阈值（final_score 大于等于该值即命中）=====
+rating:
+  recommend: 75
+  backup: 65
+
+# ===== 评级文案 =====
+labels:
+  recommend: "推荐进入笔试"
+  backup: "备选"
+  reject: "暂不推进"
+  review: "待人工复核"
+
+# ===== 验证节点阈值 =====
+validation:
+  min_field_confidence: 0.8

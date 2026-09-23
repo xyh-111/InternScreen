@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+backend/data/uploads/
+backend/data/internscreen.db
+.pytest_cache/
+node_modules/
+dist/
+.DS_Store
+
+# AI 记忆与草稿
+.trae/
+docs/
+最小demo框架.md
